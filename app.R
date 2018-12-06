@@ -18,6 +18,7 @@ library(scales)
 library(lubridate)
 library(dplyr)
 library(ggplot2)
+#install.packages("rminer")
 library(tigris)
 
 library(stringr)
@@ -27,7 +28,7 @@ library(htmltools)
 library(ggmap)
 library(rminer)
 
-#setwd("C:/Users/LewinLappy/Documents/NotreDame/Classes/DataVisualization/Project/Data/DataVizFinal")
+#setwd("C:/Users/Josh/Documents/UND Transfer/DataViz/proj_Git/DataViz-master/")
 
 #------------------------------------------Start Paul's Preparation Section ------------------------------------------
 #processing and loading
@@ -199,7 +200,7 @@ ui <- fluidPage(theme = shinytheme("flatly"),
                                       # Panel Outputs
                                       mainPanel(
                                         tabsetPanel( 
-                                          tabPanel("Map", leafletOutput(outputId = "mapBKH")),
+                                          tabPanel("Map", leafletOutput(outputId = "mapBKH"), plotOutput(outputId = "barPlot_static_Bart")),
                                           tabPanel("Code Violations Summary", dataTableOutput("tablecode1")),
                                           tabPanel("Code Violations Raw Data",dataTableOutput("tablecode2")),
                                           tabPanel("Violation Summary by Zip", dataTableOutput("tablecode3"))
@@ -229,7 +230,7 @@ ui <- fluidPage(theme = shinytheme("flatly"),
                                       # Show a plot of the generated distribution
                                       mainPanel(
                                         tabsetPanel( 
-                                          tabPanel("Map", leafletOutput(outputId = "mymap")),
+                                          tabPanel("Map", leafletOutput(outputId = "mymap"), plotOutput(outputId = "barPlot_static_Tye")),
                                           tabPanel("City Council Districts", dataTableOutput("table1")),
                                           tabPanel("Abandoned Properties", dataTableOutput("table2"))
                                           
@@ -261,9 +262,14 @@ server <- function(input, output) {
   output$lightschool <- renderLeaflet(
     
     leaflet() %>%
-      addTiles()%>%
+      addTiles(group = "Basic")  %>%
+      addProviderTiles(providers$Stamen.TerrainBackground, group = "Terrain") %>%
+      addProviderTiles(providers$Esri.WorldImagery, group = "Imagery")  %>%
       setView(lat=set_lat, lng=set_long, zoom=14) %>%
-      addCircleMarkers(data=lights2, radius = 1, color = "blue")
+      addCircleMarkers(data=lights2, radius = 1, color = "blue") %>%
+      addLayersControl(
+        baseGroups = c("Basic", "Terrain", "Imagery"),
+        options = layersControlOptions(collapsed = FALSE))
   )
   
   #this is so the map does not zoom out whenever the checkbox is selected.
@@ -393,6 +399,19 @@ server <- function(input, output) {
         options = layersControlOptions(collapsed = FALSE))
     
   )
+  
+  #static plot for codes per district
+  output$barPlot_static_Bart <- renderPlot(
+    ggplot(data = code7[code7$Case_Year %in% input$selectYear,],
+           aes(x = Zip_Code, fill = Case_Type_Code_Description))+
+      geom_bar(position = "fill") +
+            ggtitle("South Bend Violations by District")+
+      theme(plot.title = element_text(hjust = 0.5))+
+      labs(x = "South Bend Zip Code Violation", y = "Proportion", fill = "Violation Type") +
+      scale_fill_brewer(palette = "RdYlBu")
+    
+  )
+  
   #create table views of data - condensed, raw, zip codes
   output$tablecode1 <- renderDataTable(
     datatable(code2)
@@ -424,7 +443,9 @@ server <- function(input, output) {
   output$mymap <- renderLeaflet(
     
     leaflet() %>%
-      addTiles()%>%
+      addTiles(group = "Basic")  %>%
+      addProviderTiles(providers$Stamen.TerrainBackground, group = "Terrain") %>%
+      addProviderTiles(providers$Esri.WorldImagery, group = "Imagery")  %>%
       #add properties polygon
       addPolygons(data = properties, popup = ~popup, color = ~pal_tye(Outcome_St)) %>%
       #add legend for status of properties
@@ -433,8 +454,12 @@ server <- function(input, output) {
       addPolygons(layerId= data2()$OBJECTID, data=data2(), weight=3, color="black", fillColor = "gray", fillOpacity = 0.1,
                   label = (data2()$Council_Me),
                   highlightOptions = highlightOptions(color = "black", fillColor = "red", 
-                                                      weight = 4, fillOpacity = 0.1, sendToBack = TRUE)
-      ) #end of addPolygons function
+                                                      weight = 4, fillOpacity = 0.1, sendToBack = TRUE) 
+      
+      ) %>% #end of addPolygons function
+      addLayersControl(
+        baseGroups = c("Basic", "Terrain", "Imagery"),
+        options = layersControlOptions(collapsed = FALSE))
   ) #end of renderLeaflet
   
   #this is so the map does not zoom out whenever the checkbox is selected.
@@ -447,7 +472,17 @@ server <- function(input, output) {
             ) #end of addPolygons function
           
   ) #end of observe function
-  
+ 
+  # bar chart
+  output$barPlot_static_Tye <- renderPlot(
+    ggplot(data = as.data.frame(properties),
+           aes(x = Zip_Code, fill = Outcome_St))+
+      geom_bar() +
+      ggtitle("South Bend Adandoned Properties by District")+
+      theme(plot.title = element_text(hjust = 0.5))+
+      labs(x = "South Bend Districts", y = "Abandoned Properties", fill = "Violation Type")
+  )
+   
   output$table1 <- renderDataTable(
     datatable(council_districts@data)
   ) #end of output table1
