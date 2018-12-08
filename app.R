@@ -5,6 +5,8 @@
 
 #Data Visualization Final Project
 
+#https://plewin.shinyapps.io/DataVizFinal/
+
 #https://github.com/irishcubs/DataViz
 
 library(shiny)
@@ -18,9 +20,9 @@ library(scales)
 library(lubridate)
 library(dplyr)
 library(ggplot2)
-#install.packages("rminer")
+#install.packages("rgeos")
 library(tigris)
-
+library(rgeos)
 library(stringr)
 library(lattice)
 library(htmltools)
@@ -102,7 +104,10 @@ pal <- colorNumeric(palette = "RdBu", domain = code2$count)
 
 council_districts <- readOGR(dsn=".", layer = "City_Council_Districts", stringsAsFactors = F)
 properties <- readOGR(dsn=".", layer = "Abandoned_Property_Parcels", stringsAsFactors = F)
-
+pro_df <- as.data.frame(properties)
+dis_df <- as.data.frame(council_districts)
+dis_df$Council_Di <- dis_df$Num
+pro_dis_df <- merge(pro_df, dis_df, "Council_Di")
 #------------------------------------------End Tye's Preparation Section --------------------------------------------
 
 # Define UI for application
@@ -247,7 +252,7 @@ ui <- fluidPage(theme = shinytheme("flatly"),
 )#end ui
 
 # Define server logic
-server <- function(input, output) {
+server <- function(input, output, session) {
   
   #------------------------------------------Start Paul's Server Section ------------------------------------------
   
@@ -408,7 +413,8 @@ server <- function(input, output) {
             ggtitle("South Bend Violations by District")+
       theme(plot.title = element_text(hjust = 0.5))+
       labs(x = "South Bend Zip Code Violation", y = "Proportion", fill = "Violation Type") +
-      scale_fill_brewer(palette = "RdYlBu")
+      scale_fill_brewer(palette = "RdYlBu")+
+      scale_color_discrete(drop=FALSE)
     
   )
   
@@ -428,9 +434,17 @@ server <- function(input, output) {
   
   
   #------------------------------------------Start Tye's Server Section -------------------------------------------
-  data2 <- reactive(
-    council_districts[council_districts$Council_Me %in% (input$selection),])
+    data2 <- reactive({
+      if(is.null(input$selection)){
+        updateCheckboxGroupInput(session = session, inputId= "selection", selected=unique(council_districts$Council_Me))
+        return(council_districts)
+      }
+      else{
+        return(council_districts[council_districts$Council_Me %in% (input$selection),])
+      }
+    })
   
+
   # create popup for abandoned properties data
   properties$popup <- paste("Status: ",properties$Outcome_St,"</b><br>",
                             "Structures: ",properties$Structures,"<br>",sep ="",
@@ -438,51 +452,53 @@ server <- function(input, output) {
                             "County Tax: ", properties$County_Tax)
   
   #create palette
-  pal_tye <- colorFactor(palette = 'Set1', domain =properties$Outcome_St) 
+  pal_tye <- colorFactor(palette = 'RdYlBu', na.color = "#808080", domain =properties$Outcome_St) 
   
   output$mymap <- renderLeaflet(
-    
-    leaflet() %>%
-      addTiles(group = "Basic")  %>%
-      addProviderTiles(providers$Stamen.TerrainBackground, group = "Terrain") %>%
-      addProviderTiles(providers$Esri.WorldImagery, group = "Imagery")  %>%
-      #add properties polygon
-      addPolygons(data = properties, popup = ~popup, color = ~pal_tye(Outcome_St)) %>%
-      #add legend for status of properties
-      addLegend("bottomleft", pal = pal_tye, values = properties$Outcome_St, title = "Abandoned Property Status",
-                labFormat = labelFormat())%>%
-      addPolygons(layerId= data2()$OBJECTID, data=data2(), weight=3, color="black", fillColor = "gray", fillOpacity = 0.1,
-                  label = (data2()$Council_Me),
-                  highlightOptions = highlightOptions(color = "black", fillColor = "red", 
-                                                      weight = 4, fillOpacity = 0.1, sendToBack = TRUE) 
       
-      ) %>% #end of addPolygons function
-      addLayersControl(
-        baseGroups = c("Basic", "Terrain", "Imagery"),
-        options = layersControlOptions(collapsed = FALSE))
-  ) #end of renderLeaflet
-  
-  #this is so the map does not zoom out whenever the checkbox is selected.
-  observe(leafletProxy("mymap") %>% 
-            removeShape(layerId = data2()$OBJECTID) %>% 
-            addPolygons(layerId= data2()$OBJECTID, data=data2(), weight=3, color="black", fillColor = "gray", fillOpacity = 0.1,
-                        label = (data2()$Council_Me),
-                        highlightOptions = highlightOptions(color = "black", fillColor = "red", 
-                                                            weight = 4, fillOpacity = 0.1, sendToBack = TRUE)
-            ) #end of addPolygons function
-          
-  ) #end of observe function
- 
-  # bar chart
-  output$barPlot_static_Tye <- renderPlot(
-    ggplot(data = as.data.frame(properties),
-           aes(x = Zip_Code, fill = Outcome_St))+
-      geom_bar() +
-      ggtitle("South Bend Adandoned Properties by District")+
-      theme(plot.title = element_text(hjust = 0.5))+
-      labs(x = "South Bend Districts", y = "Abandoned Properties", fill = "Violation Type")
-  )
-   
+      leaflet() %>%
+        addTiles(group = "Basic")  %>%
+        addProviderTiles(providers$Stamen.TerrainBackground, group = "Terrain") %>%
+        addProviderTiles(providers$Esri.WorldImagery, group = "Imagery")  %>%
+        #add properties polygon
+        addPolygons(data = properties, popup = ~popup, color = ~pal_tye(Outcome_St)) %>%
+        #add legend for status of properties
+        addLegend("bottomleft", pal = pal_tye, values = properties$Outcome_St, title = "Abandoned Property Status",
+                  labFormat = labelFormat())%>%
+        addPolygons(layerId= data2()$OBJECTID, data=data2(), weight=3, color="black", fillColor = "gray", fillOpacity = 0.1,
+                    label = (data2()$Council_Me),
+                    highlightOptions = highlightOptions(color = "black", fillColor = "red", 
+                                                        weight = 4, fillOpacity = 0.1, sendToBack = TRUE) 
+                    
+        ) %>% #end of addPolygons function
+        addLayersControl(
+          baseGroups = c("Basic", "Terrain", "Imagery"),
+          options = layersControlOptions(collapsed = FALSE))
+    ) #end of renderLeaflet
+    
+    #this is so the map does not zoom out whenever the checkbox is selected.
+    observe(leafletProxy("mymap") %>% 
+              removeShape(layerId = data2()$OBJECTID) %>% 
+              addPolygons(layerId= data2()$OBJECTID, data=data2(), weight=3, color="black", fillColor = "gray", fillOpacity = 0.1,
+                          label = (data2()$Council_Me),
+                          highlightOptions = highlightOptions(color = "black", fillColor = "red", 
+                                                              weight = 4, fillOpacity = 0.1, sendToBack = TRUE)
+              ) #end of addPolygons function
+            
+    ) #end of observe function
+    
+    # bar chart
+    output$barPlot_static_Tye <- renderPlot(
+      ggplot(data = pro_dis_df[pro_dis_df$Council_Me %in% (data2()$Council_Me),],
+             aes(x = Council_Me, fill = Outcome_St))+
+        geom_bar() +
+        ggtitle("South Bend Adandoned Properties by District")+
+        theme(plot.title = element_text(hjust = 0.5))+
+        labs(x = "South Bend District Representatives", y = "Abandoned Properties", fill = "Status Type") +
+        scale_fill_brewer(palette = "RdYlBu",na.value = "gray")+
+        scale_color_discrete(drop=FALSE)
+    )
+    
   output$table1 <- renderDataTable(
     datatable(council_districts@data)
   ) #end of output table1
